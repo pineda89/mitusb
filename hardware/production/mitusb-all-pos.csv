@@ -1,0 +1,8 @@
+Designator,Value,Footprint,MidX,MidY,Rotation,Layer
+C1,100nF,CP_EIA-3216-10_Kemet-I,197.4,-86.1,0,top
+J1,Conn_02x03_Counter_Clockwise,PinSocket_2x03_P2.00mm_Vertical,167.5,-73,90,top
+J2,Conn_01x05_Socket,PinSocket_1x05_P2.54mm_Vertical,164.92,-80.46,180,top
+J3,Conn_01x24_Socket,PinSocket_1x24_P2.54mm_Vertical,182.57,-83.51,180,top
+J4,Conn_01x24_Socket,PinSocket_1x24_P2.54mm_Vertical,182.57,-68.1,180,top
+J5,RJ45_Amphenol_RJMG1BD3B8K1ANR,RJ45_Amphenol_RJMG1BD3B8K1ANR,194.5,-96.15,90,top
+J6,USB-231-ARY,USB_A_Stewart_SS-52100-001_Horizontal,170,-98,0,top

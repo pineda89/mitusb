@@ -1,0 +1,7 @@
+"Designator","Value","Footprint","Quantity","Supplier","Supplier Part Number"
+"C1","100nF","Capacitor_Tantalum_SMD:CP_EIA-3216-10_Kemet-I","1","LCSC","C7173"
+"J2","Conn_01x05_Socket","Connector_PinSocket_2.54mm:PinSocket_1x05_P2.54mm_Vertical","1","LCSC","C50950"
+"J5","HY931147C","HY931147C:HY931147C","1","LCSC","C91754"
+"J6","USB-231-ARY","Connector_USB:USB_A_Stewart_SS-52100-001_Horizontal","1","LCSC","C2880666"
+"J3,J4","Conn_01x24_Socket","Connector_PinSocket_2.54mm:PinSocket_1x24_P2.54mm_Vertical","2","LCSC","C2883741"
+"J1","Conn_02x03_Counter_Clockwise","Connector_PinSocket_2.00mm:PinSocket_2x03_P2.00mm_Vertical","1","LCSC","C7499367"
