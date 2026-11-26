@@ -13,6 +13,10 @@ Carrier PCB for the Teensy 4.1, designed in KiCad 9.
 | `production/Gerber.zip` | Gerbers and drill files |
 | `production/BOM.csv` | Bill of materials with LCSC part numbers |
 | `production/mitusb-all-pos.csv` | Pick-and-place positions |
+| `renders/` | Renders of the bare PCB and with the Teensy fitted |
+| `enclosure/mitusb-case.scad` | Parametric OpenSCAD enclosure: base and flat lid, four M3 screws |
+| `enclosure/mitusb-base.stl`, `enclosure/mitusb-lid.stl` | Printable exports of the enclosure |
+| `enclosure/renders/` | Renders of the enclosure |
 
 ## Parts
 

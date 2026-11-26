@@ -11,3 +11,6 @@ _autosave-*
 
 # Python bytecode
 __pycache__/
+
+# macOS
+.DS_Store
