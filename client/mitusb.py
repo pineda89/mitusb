@@ -10,6 +10,7 @@
 import argparse
 import math
 import random
+import re
 import socket
 import struct
 
@@ -87,7 +88,7 @@ def main():
             profile = sock.recv(64).strip()
         except socket.timeout:
             p.exit(1, "No profile reply from the board.\n")
-        if profile not in (b"copied", b"generic"):
+        if not re.fullmatch(rb"generic|copied [a-z]+", profile):
             p.exit(1, "Unexpected profile reply.\n")
         print(profile.decode("ascii"))
         return

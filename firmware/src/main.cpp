@@ -191,8 +191,9 @@ static void handleCommand() {
       subscriberPort = udp.remotePort();
       break;
     case Command::Profile: {
-      const char *profile = copiedProfile ? "copied\n" : "generic\n";
-      udp.send(udp.remoteIP(), udp.remotePort(), (const uint8_t*)profile, strlen(profile));
+      char line[32] = "generic\n";
+      if (copiedProfile) snprintf(line, sizeof line, "copied %s\n", kindName(profile));
+      udp.send(udp.remoteIP(), udp.remotePort(), (const uint8_t*)line, strlen(line));
       break;
     }
     case Command::Move: sendMove(c.a, c.b, 0); break;

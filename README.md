@@ -1,8 +1,8 @@
 # mitusb
 
-A USB mouse bridge for Teensy 4.1. Connect the mouse to J6 and the computer to the micro-USB port. At startup, the board tries to copy the mouse's USB identity and supported HID interfaces. If capture fails, it uses the generic mouse profile.
+A USB bridge for Teensy 4.1 that sits between a mouse, keyboard or gamepad and the computer. Connect the device to J6 and the computer to the micro-USB port. At startup, the board copies the device's USB identity and descriptors and then passes everything through in both directions. If there is nothing it can copy, it becomes a generic mouse.
 
-The physical mouse works without Ethernet. The network client can query the profile, read events, and send pointer commands. Use a trusted network because the UDP protocol has no authentication. [Profiles, limits, and hardware checks](firmware/README.md)
+The device works without Ethernet. With a mouse, the network client can also read events and send pointer commands; keyboards and gamepads are passed through untouched. Use a trusted network because the UDP protocol has no authentication. [Profiles, limits, and hardware checks](firmware/README.md)
 
 ## Build, test, and upload
 
@@ -17,7 +17,7 @@ make upload  # Build and flash the board
 make clean   # Remove the Teensy build output
 ```
 
-The build produces `firmware/.pio/build/teensy41/firmware.hex`. Keep the mouse connected to J6 during restart so the firmware can capture its descriptors. If the loader cannot find the Teensy, press its **Program** button once.
+The build produces `firmware/.pio/build/teensy41/firmware.hex`. Keep the device connected to J6 during restart so the firmware can capture its descriptors. If the loader cannot find the Teensy, press its **Program** button once.
 
 The equivalent PlatformIO commands run from the firmware directory.
 

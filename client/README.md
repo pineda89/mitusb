@@ -11,7 +11,7 @@ python3 mitusb.py click left
 python3 mitusb.py human 400 -120 --click left --then 15 -4 --ms 80
 ```
 
-`profile` prints the USB profile selected at startup, either `copied` or `generic`. `read` prints physical button changes and wheel steps (not movement) while the board's side-button mode is on, until you press Ctrl+C. The board supports one subscriber at a time. Starting another reader can replace the current subscriber.
+`profile` prints the USB profile selected at startup: `generic`, or `copied` followed by the kind of device that was cloned (`mouse`, `keyboard`, `gamepad` or `other`). The pointer commands below need a mouse: with a cloned keyboard or gamepad they have no effect. `read` prints physical button changes and wheel steps (not movement) while the board's side-button mode is on, until you press Ctrl+C. The board supports one subscriber at a time. Starting another reader can replace the current subscriber.
 
 `human` moves the pointer exactly `dx dy` along a slightly curved path that speeds up and slows down like a hand. `--click` clicks at that point. `--then DX DY` keeps moving that much after the click. `--ms` sets how long the move to `dx dy` takes; without it the client picks a human-like duration from the distance. The firmware limits speed to 100 counts per millisecond at the peak, so 400 counts need at least 8 ms. Curvature, the pause before the click, and the hold time are randomized on each run. The client waits for the board to accept the action.
 

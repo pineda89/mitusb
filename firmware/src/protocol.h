@@ -1,7 +1,7 @@
 // Text protocol spoken over UDP. Pure C++ so it can be unit-tested on the host.
 //
 //   hello              -> subscribe the sender to button and wheel events
-//   profile            -> report whether USB descriptors were copied
+//   profile            -> "generic", or "copied <kind>" when a device was cloned
 //   move <dx> <dy>     -> inject a relative move
 //   wheel <n>          -> inject wheel steps
 //   click left|right|middle
