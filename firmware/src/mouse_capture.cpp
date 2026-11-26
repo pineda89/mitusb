@@ -30,12 +30,9 @@ CapturingHIDParser *const parsers[] = {&hid1, &hid2, &hid3};
 // The mouse must claim its collection before the catch-all raw input driver.
 WiredMouse mouse(usbHost);
 
-volatile bool mouseFrozen = false;
-volatile uint8_t hiddenMouseButtons = 0;
-InjectedMouse injected;
 
 namespace {
-const MouseLayout *mouseLayout = nullptr;
+const MouseLayout *captureLayout = nullptr;
 const UsbProfile *captured = nullptr;
 
 // The endpoint of an interface (by its number) in one direction, or 0.
@@ -58,10 +55,10 @@ void forwardInput(const Transfer_t *transfer) {
     uint8_t visible[MousePacketSize];
     int takenX = 0, takenY = 0;
     bool merged = false;
-    if (parser == mouse.source && mouseLayout) {
+    if (parser == mouse.source && captureLayout) {
       memcpy(visible, packet, length);
-      hideMouseButtons(*mouseLayout, hiddenMouseButtons, visible, length);
-      merged = mergeMouse(*mouseLayout, injected.buttons, injected.x, injected.y,
+      hideMouseButtons(*captureLayout, hiddenMouseButtons, visible, length);
+      merged = mergeMouse(*captureLayout, injected.buttons, injected.x, injected.y,
                           visible, length, takenX, takenY);
       packet = visible;
     }
@@ -257,7 +254,7 @@ bool probeMouse(UsbProfile &profile, MouseLayout &layout, uint8_t &mouseEndpoint
   for (unsigned i = 0; i < profile.interfaceCount; ++i) {
     const UsbInterface &interface = profile.interfaces[i];
     if (interface.number == mouseInterface) {
-      if (readMouseLayout(interface.report, interface.reportLength, layout)) mouseLayout = &layout;
+      if (readMouseLayout(interface.report, interface.reportLength, layout)) captureLayout = &layout;
       break;
     }
   }

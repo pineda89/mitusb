@@ -141,8 +141,38 @@ void test_unsupported_descriptors_select_fallback() {
   TEST_ASSERT_EQUAL(0, layout.bytes);
 }
 
+void test_decodes_what_it_encodes() {
+  auto bytes = mouse;
+  bytes[15] = 5; bytes[23] = 5; bytes[27] = 3;  // five buttons
+  for (bool withId : {false, true}) {
+    if (withId) bytes.insert(bytes.begin() + 6, {0x85,7});
+    auto layout = parseMouse(bytes);
+    uint8_t packet[MousePacketSize];
+    encodeMouse(layout, 5, -3, 100, -1, 0, packet);
+    uint8_t buttons = 0;
+    int x = 0, y = 0, wheel = 0, pan = 9;
+    TEST_ASSERT_TRUE(decodeMouse(layout, packet, layout.bytes, buttons, x, y, wheel, pan));
+    TEST_ASSERT_EQUAL(5, buttons);
+    TEST_ASSERT_EQUAL(-3, x);
+    TEST_ASSERT_EQUAL(100, y);
+    TEST_ASSERT_EQUAL(-1, wheel);
+    TEST_ASSERT_EQUAL(0, pan);  // no pan field in this layout
+    TEST_ASSERT_FALSE(decodeMouse(layout, packet, layout.bytes - 1, buttons, x, y, wheel, pan));
+    if (withId) {
+      packet[0] = 9;
+      TEST_ASSERT_FALSE(decodeMouse(layout, packet, layout.bytes, buttons, x, y, wheel, pan));
+    }
+  }
+  MouseLayout none{};
+  uint8_t packet[4] = {};
+  uint8_t buttons;
+  int x, y, wheel, pan;
+  TEST_ASSERT_FALSE(decodeMouse(none, packet, sizeof packet, buttons, x, y, wheel, pan));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_decodes_what_it_encodes);
   RUN_TEST(test_three_buttons_with_wheel);
   RUN_TEST(test_hides_side_buttons_only);
   RUN_TEST(test_merges_injected_input_into_a_physical_report);

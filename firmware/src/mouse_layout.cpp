@@ -124,6 +124,33 @@ bool readMouseLayout(const uint8_t *data, size_t length, MouseLayout &result) {
   return true;
 }
 
+namespace {
+int get(const uint8_t *packet, MouseField field, bool isSigned) {
+  unsigned raw = 0;
+  for (unsigned i = 0; i < field.width; ++i) {
+    unsigned bit = field.offset + i;
+    raw |= ((packet[bit / 8] >> (bit % 8)) & 1u) << i;
+  }
+  if (!isSigned || !field.width) return raw;
+  unsigned sign = 1u << (field.width - 1);
+  return int(raw ^ sign) - int(sign);
+}
+}
+
+bool decodeMouse(const MouseLayout &layout, const uint8_t *packet, size_t length,
+                 uint8_t &buttons, int &x, int &y, int &wheel, int &pan) {
+  if (!layout.bytes || length < layout.bytes || (layout.reportId && packet[0] != layout.reportId)) {
+    return false;
+  }
+  buttons = 0;
+  for (unsigned i = 0; i < 8; ++i) buttons |= get(packet, layout.buttons[i], false) << i;
+  x = get(packet, layout.x, true);
+  y = get(packet, layout.y, true);
+  wheel = get(packet, layout.wheel, true);
+  pan = get(packet, layout.pan, true);
+  return true;
+}
+
 void encodeMouse(const MouseLayout &layout, uint8_t buttons, int x, int y,
                  int wheel, int pan, uint8_t (&packet)[MousePacketSize]) {
   memset(packet, 0, sizeof packet);

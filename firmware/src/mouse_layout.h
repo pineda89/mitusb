@@ -23,5 +23,8 @@ void hideMouseButtons(const MouseLayout &layout, uint8_t mask, uint8_t *packet, 
 // the field widths. Returns false and leaves the packet alone if it is not such a report.
 bool mergeMouse(const MouseLayout &layout, uint8_t buttons, int x, int y,
                 uint8_t *packet, size_t length, int &takenX, int &takenY);
+// Reads a raw report of this layout. False if it is not one (other report ID, too short).
+bool decodeMouse(const MouseLayout &layout, const uint8_t *packet, size_t length,
+                 uint8_t &buttons, int &x, int &y, int &wheel, int &pan);
 void encodeMouse(const MouseLayout &layout, uint8_t buttons, int x, int y,
                  int wheel, int pan, uint8_t (&packet)[MousePacketSize]);
