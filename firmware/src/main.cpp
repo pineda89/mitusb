@@ -6,6 +6,7 @@
 #include "protocol.h"
 #include "mouse_action.h"
 #include "usb_capture.h"
+#include "usb_control.h"
 
 using namespace qindesign::network;
 
@@ -211,6 +212,7 @@ void setup() {
     if (endpoint.in && kinds[endpoint.interface] == &mouseKind) mouseEndpoint = endpoint.number;
   }
   copiedProfile = startUsbDevice(captured ? &profile : nullptr);
+  if (copiedProfile) enableUsbControl(profile);
   Ethernet.setHostname("mitusb");
   Ethernet.begin();
   MDNS.begin("mitusb");  // reachable as mitusb.local, no IP lookup needed
@@ -220,6 +222,7 @@ void setup() {
 void loop() {
   taskUsbHost();
   pollUsbDevice();
+  taskUsbControl();
   forwardPhysicalMouse();
   handleCommand();
   advanceAction();

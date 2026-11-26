@@ -38,3 +38,4 @@ void taskUsbHost();
 // generic mode, because a claimed device cannot be handed to the HID parser.
 bool probeDevice(UsbProfile &profile, const DeviceKind *kinds[MaxUsbInterfaces]);
 bool deviceAttached();  // the cloned device is still on J6
+// hostControl and hostControlResult, declared in usb_control.h, are implemented here too.

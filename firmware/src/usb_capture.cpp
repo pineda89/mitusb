@@ -1,4 +1,7 @@
 #include "usb_capture.h"
+#include "usb_control.h"
+
+extern "C" volatile uint32_t usbhost_data_token;  // scripts/usbhost_control_length.py
 #include <util/atomic.h>
 
 namespace {
@@ -36,6 +39,8 @@ public:
   bool read(uint8_t type, uint16_t value, uint16_t index, uint16_t length);
   bool open(const UsbProfile &profile);
   void send(uint8_t number, const uint8_t *packet, uint8_t length);
+  bool startControl(uint64_t request, uint8_t *data);
+  volatile int forwarded = -1;  // -2 in flight, -1 failed, else bytes transferred
 
 protected:
   bool claim(Device_t *dev, int type, const uint8_t *descriptors, uint32_t len) override;
@@ -45,13 +50,15 @@ protected:
 private:
   static void received(const Transfer_t *transfer);
   static void sent(const Transfer_t *transfer);
+  static void controlError(const Transfer_t *transfer);
   Endpoint *find(const Pipe_t *pipe);
 
   Pipe_t pipes[MaxUsbEndpoints] __attribute__((aligned(32)));
   Transfer_t transfers[64] __attribute__((aligned(32)));
   Endpoint endpoints[MaxUsbEndpoints];
   uint8_t endpointCount = 0;
-  setup_t setup;
+  setup_t setup, forwardedSetup;
+  uint8_t *forwardedData = nullptr;
   volatile bool controlComplete = false;
 };
 
@@ -78,10 +85,15 @@ bool RawDevice::claim(Device_t *dev, int type, const uint8_t *descriptors, uint3
 
 void RawDevice::disconnect() {
   claimed = forwarding = false;
+  if (forwarded == -2) forwarded = -1;
   endpointCount = 0;
 }
 
 void RawDevice::control(const Transfer_t *transfer) {
+  if (transfer->buffer == forwardedData && forwarded == -2) {
+    uint32_t remaining = (usbhost_data_token >> 16) & 0x7fff;
+    forwarded = transfer->length > remaining ? transfer->length - remaining : 0;
+  }
   if (transfer->buffer == controlBuffer) controlComplete = true;
 }
 
@@ -131,6 +143,22 @@ bool RawDevice::open(const UsbProfile &profile) {
     forwarding = opened;
   }
   return opened;
+}
+
+void RawDevice::controlError(const Transfer_t *) {
+  if (raw.forwarded == -2) raw.forwarded = -1;
+}
+
+bool RawDevice::startControl(uint64_t request, uint8_t *data) {
+  if (!forwarding || forwarded == -2) return false;
+  // A stall from the device reaches the pipe's error callback, never control().
+  device->control_pipe->error_callback_function = controlError;
+  forwardedSetup.word1 = request;
+  forwardedSetup.word2 = request >> 32;
+  if (!queue_Control_Transfer(device, &forwardedSetup, data, this)) return false;
+  forwardedData = data;
+  forwarded = -2;
+  return true;
 }
 
 Endpoint *RawDevice::find(const Pipe_t *pipe) {
@@ -240,6 +268,16 @@ bool capture(UsbProfile &profile, const DeviceKind *kinds[MaxUsbInterfaces]) {
 
 extern "C" void forwardUsbOutput(uint8_t endpoint, const uint8_t *packet, uint8_t length) {
   raw.send(endpoint, packet, length);
+}
+
+bool hostControl(uint64_t setup, uint8_t *data) {
+  bool started = false;
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) started = raw.startControl(setup, data);
+  return started;
+}
+
+int hostControlResult() {
+  return raw.forwarded;
 }
 
 void beginUsbHost() {
