@@ -30,17 +30,37 @@ CapturingHIDParser *const parsers[] = {&hid1, &hid2, &hid3};
 // The mouse must claim its collection before the catch-all raw input driver.
 WiredMouse mouse(usbHost);
 
+volatile bool mouseFrozen = false;
+volatile uint8_t hiddenMouseButtons = 0;
+InjectedMouse injected;
+
 namespace {
+const MouseLayout *mouseLayout = nullptr;
 volatile bool controlComplete;
 DMAMEM uint8_t controlBuffer[MouseDescriptorCapacity] __attribute__((aligned(32)));
 
 void forwardInput(const Transfer_t *transfer) {
   auto *parser = static_cast<CapturingHIDParser *>(transfer->driver);
-  if (!parser->selected) return;
+  if (!parser->selected || mouseFrozen) return;
   uint32_t length = completedPacketLength(transfer->length, transfer->qtd.token);
   if (length && length <= MousePacketSize) {
-    forwardHidInput(parser->interfaceNumber(), static_cast<const uint8_t *>(transfer->buffer),
-                    length);
+    const uint8_t *packet = static_cast<const uint8_t *>(transfer->buffer);
+    uint8_t visible[MousePacketSize];
+    int takenX = 0, takenY = 0;
+    bool merged = false;
+    if (parser == mouse.source && mouseLayout) {
+      memcpy(visible, packet, length);
+      hideMouseButtons(*mouseLayout, hiddenMouseButtons, visible, length);
+      merged = mergeMouse(*mouseLayout, injected.buttons, injected.x, injected.y,
+                          visible, length, takenX, takenY);
+      packet = visible;
+    }
+    if (forwardHidInput(parser->interfaceNumber(), packet, length) && merged) {
+      injected.x -= takenX;
+      injected.y -= takenY;
+      injected.sentButtons = injected.buttons;
+      injected.merged = true;
+    }
   }
 }
 
@@ -216,7 +236,7 @@ bool probeMouse(MouseProfile &profile, MouseLayout &layout, uint8_t &mouseInterf
   for (unsigned i = 0; i < profile.interfaceCount; ++i) {
     const MouseHidInterface &interface = profile.interfaces[i];
     if (interface.number == mouseInterface) {
-      readMouseLayout(interface.report, interface.reportLength, layout);
+      if (readMouseLayout(interface.report, interface.reportLength, layout)) mouseLayout = &layout;
       break;
     }
   }

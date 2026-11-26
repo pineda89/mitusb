@@ -134,3 +134,45 @@ void encodeMouse(const MouseLayout &layout, uint8_t buttons, int x, int y,
   put(packet, layout.wheel, wheel);
   put(packet, layout.pan, pan);
 }
+
+void hideMouseButtons(const MouseLayout &layout, uint8_t mask, uint8_t *packet, size_t length) {
+  if (!layout.bytes || !length || (layout.reportId && packet[0] != layout.reportId)) return;
+  for (unsigned i = 0; i < 8; ++i) {
+    MouseField field = layout.buttons[i];
+    if ((mask >> i & 1) && field.width && field.offset / 8u < length) {
+      packet[field.offset / 8] &= ~(1u << (field.offset % 8));
+    }
+  }
+}
+
+namespace {
+int add(uint8_t *packet, MouseField field, int amount) {
+  unsigned raw = 0;
+  for (unsigned i = 0; i < field.width; ++i) {
+    unsigned bit = field.offset + i;
+    raw |= ((packet[bit / 8] >> (bit % 8)) & 1u) << i;
+    packet[bit / 8] &= ~(1u << (bit % 8));
+  }
+  int limit = (1 << (field.width - 1)) - 1;
+  int before = int(raw ^ (limit + 1u)) - (limit + 1);  // sign-extend
+  amount = amount > 127 ? 127 : amount < -127 ? -127 : amount;
+  int after = before + amount;
+  after = after > limit ? limit : after < -limit ? -limit : after;
+  put(packet, field, unsigned(after));
+  return after - before;
+}
+}
+
+bool mergeMouse(const MouseLayout &layout, uint8_t buttons, int x, int y,
+                uint8_t *packet, size_t length, int &takenX, int &takenY) {
+  takenX = takenY = 0;
+  if (!layout.bytes || length < layout.bytes || (layout.reportId && packet[0] != layout.reportId)) {
+    return false;
+  }
+  for (unsigned i = 0; i < 8; ++i) {
+    if (buttons >> i & 1) put(packet, layout.buttons[i], 1);
+  }
+  takenX = add(packet, layout.x, x);
+  takenY = add(packet, layout.y, y);
+  return true;
+}

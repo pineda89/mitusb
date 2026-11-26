@@ -30,6 +30,17 @@ protected:
 };
 
 extern WiredMouse mouse;
+// Copied-mode forwarding runs in the USB host interrupt, so the main loop steers it with these.
+extern volatile bool mouseFrozen;            // drop every physical report
+extern volatile uint8_t hiddenMouseButtons;  // button mask removed from forwarded reports
+// Synthetic input waiting to reach the computer. Physical reports carry it when the mouse
+// is moving, so both arrive as one report. Touch it with interrupts disabled.
+struct InjectedMouse {
+  int x, y;                      // counts not sent yet
+  uint8_t buttons, sentButtons;  // wanted, and last delivered
+  bool merged;                   // a physical report carried it since the last frame
+};
+extern InjectedMouse injected;
 
 void beginMouseHost();
 void taskMouseHost();

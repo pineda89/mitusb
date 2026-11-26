@@ -28,6 +28,66 @@ void test_three_buttons_with_wheel() {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, packet, layout.bytes);
 }
 
+void test_hides_side_buttons_only() {
+  auto bytes = mouse;
+  bytes[15] = 5; bytes[23] = 5; bytes[27] = 3;  // five buttons, three padding bits
+  auto layout = parseMouse(bytes);
+  uint8_t packet[] = {0x1f, 1, 2, 3};
+  hideMouseButtons(layout, 8 | 16, packet, sizeof packet);
+  const uint8_t expected[] = {0x07, 1, 2, 3};
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, packet, sizeof packet);
+
+  bytes.insert(bytes.begin() + 6, {0x85,7});
+  layout = parseMouse(bytes);
+  uint8_t other[] = {9, 0x1f, 1, 2, 3}, same[] = {7, 0x1f, 1, 2, 3};
+  hideMouseButtons(layout, 8 | 16, other, sizeof other);  // another report ID: untouched
+  hideMouseButtons(layout, 8 | 16, same, sizeof same);
+  TEST_ASSERT_EQUAL_HEX8(0x1f, other[1]);
+  TEST_ASSERT_EQUAL_HEX8(0x07, same[1]);
+}
+
+void test_merges_injected_input_into_a_physical_report() {
+  auto bytes = mouse;
+  bytes[15] = 5; bytes[23] = 5; bytes[27] = 3;
+  auto layout = parseMouse(bytes);
+  uint8_t packet[] = {0x01, 120, 0xfe, 5};  // left held, x=120, y=-2, wheel=5
+  int tx, ty;
+  TEST_ASSERT_TRUE(mergeMouse(layout, 2, 50, -300, packet, sizeof packet, tx, ty));
+  const uint8_t expected[] = {0x03, 127, 0x81, 5};  // physical button kept, axes saturate
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, packet, sizeof packet);
+  TEST_ASSERT_EQUAL(7, tx);
+  TEST_ASSERT_EQUAL(-125, ty);
+
+  uint8_t small[] = {0, 10, 0xf6, 0};
+  TEST_ASSERT_TRUE(mergeMouse(layout, 0, -30, 4, small, sizeof small, tx, ty));
+  const uint8_t summed[] = {0, 0xec, 0xfa, 0};  // 10-30=-20, -10+4=-6
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(summed, small, sizeof small);
+  TEST_ASSERT_EQUAL(-30, tx);
+  TEST_ASSERT_EQUAL(4, ty);
+
+  uint8_t truncated[] = {0, 1};
+  TEST_ASSERT_FALSE(mergeMouse(layout, 1, 5, 5, truncated, sizeof truncated, tx, ty));
+  TEST_ASSERT_EQUAL(0, tx);
+  TEST_ASSERT_EQUAL_HEX8(0, truncated[0]);
+}
+
+void test_merges_into_sixteen_bit_axes() {
+  auto bytes = mouse;
+  bytes.insert(bytes.begin() + 6, {0x85,7});
+  bytes.erase(bytes.end() - 12, bytes.end());
+  bytes.insert(bytes.end(), {0x16,1,0x80, 0x26,0xff,0x7f,
+                             0x75,16, 0x95,3, 0x81,6, 0xc0, 0xc0});
+  auto layout = parseMouse(bytes);
+  uint8_t packet[MousePacketSize], other[MousePacketSize];
+  encodeMouse(layout, 0, -300, 1000, 0, 0, packet);
+  encodeMouse(layout, 0, -400, 1090, 0, 0, other);
+  int tx, ty;
+  TEST_ASSERT_TRUE(mergeMouse(layout, 0, -100, 90, packet, layout.bytes, tx, ty));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(other, packet, layout.bytes);
+  packet[0] = 9;  // another report ID
+  TEST_ASSERT_FALSE(mergeMouse(layout, 1, 1, 1, packet, layout.bytes, tx, ty));
+}
+
 void test_report_id_and_signed_sixteen_bit_axes() {
   auto bytes = mouse;
   bytes.insert(bytes.begin() + 6, {0x85,7});
@@ -84,6 +144,9 @@ void test_unsupported_descriptors_select_fallback() {
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_three_buttons_with_wheel);
+  RUN_TEST(test_hides_side_buttons_only);
+  RUN_TEST(test_merges_injected_input_into_a_physical_report);
+  RUN_TEST(test_merges_into_sixteen_bit_axes);
   RUN_TEST(test_report_id_and_signed_sixteen_bit_axes);
   RUN_TEST(test_deathadder_v3_pro_vendor_fields);
   RUN_TEST(test_unsupported_descriptors_select_fallback);

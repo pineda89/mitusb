@@ -19,6 +19,10 @@ The link to the computer operates at full speed (12 Mbit/s). Transfer queues can
 
 The bridge forwards reports over interrupt endpoints. HID control requests such as `GET_REPORT`, `SET_REPORT`, and switching to boot protocol through `SET_PROTOCOL` are outside that path. This can affect DPI or lighting settings and mouse use in BIOS/UEFI. Matching report descriptors confirm the advertised format. Movement, buttons, and OUT transfers require separate functional checks.
 
+## Side-button mode
+
+Press left, right, back, and forward together on the physical mouse to toggle the mode. The mouse freezes for one second so the switch is noticeable, and all buttons are released on the computer. While the mode is on, the computer never sees back and forward, and the subscriber receives button and wheel events, including back and forward. While it is off, no events are sent. The mode is off after every restart. In `copied` mode, hiding the buttons requires a report format that the encoder recognizes.
+
 ## UDP protocol
 
 Port 4242 accepts one text command per datagram, up to 63 bytes, with an optional trailing newline. The protocol has no authentication. Any device that can reach the port can control the pointer or subscribe to events. Use Ethernet on a trusted network.
@@ -31,12 +35,14 @@ Port 4242 accepts one text command per datagram, up to 63 bytes, with an optiona
 | `wheel <n>` | Accepts the same range. Requires a wheel field in the profile. |
 | `click left\|right\|middle` | Presses and releases an available button while preserving recorded physical button states. |
 
-The subscriber receives `mouse <buttons> <dx> <dy> <wheel>`. The button mask uses 1 for left, 2 for right, 4 for middle, 8 for back, and 16 for forward. The firmware discards malformed commands. Movement, wheel, and click commands receive no acknowledgement. In `copied` mode, these commands require a report format that the encoder recognizes. Physical forwarding also works with other formats. [Client examples](../client/README.md)
+A 17-byte binary datagram starts a human-like action: a minimum-jerk move along a curved path, an optional click, and a correction move, paced by the 1 ms USB frame. While the physical mouse is moving, its reports carry the action's movement and buttons, so the computer receives one combined report. Otherwise the action sends its own report each frame. The board answers accepted actions with the single byte 121, and a new action replaces the one in progress. `mouse_action.h` documents the fields and `client/mitusb.py human` builds the packet.
+
+The subscriber receives `mouse <buttons> <wheel>` when the physical buttons change or the wheel turns, but only while the [side-button mode](#side-button-mode) is on. Movement alone is not reported. The button mask uses 1 for left, 2 for right, 4 for middle, 8 for back, and 16 for forward. The firmware discards malformed commands. Movement, wheel, and click commands receive no acknowledgement. In `copied` mode, these commands require a report format that the encoder recognizes. Physical forwarding also works with other formats. [Client examples](../client/README.md)
 
 ## Hardware checks
 
 1. Start the board with the mouse attached and Ethernet unplugged. Check movement, the wheel, and button presses and releases. Repeat startup without the mouse, then connect it to check the generic profile.
-2. With Ethernet connected, look up the `mitusb` DHCP lease. From the repository root, run `python3 client/mitusb.py --host 192.168.1.50 profile`, substituting the board's IP address. Check the profile after both startup scenarios.
+2. With Ethernet connected, run `python3 client/mitusb.py profile` from the repository root. The board announces itself as `mitusb.local` over mDNS and also requests the `mitusb` DHCP hostname. If the name does not resolve, pass the leased IP address with `--host`. Check the profile after both startup scenarios.
 3. On Linux, locate the `report_descriptor` file for each interface under `/sys/bus/hid/devices/`. Hash it with `sha256sum` with the mouse connected directly and again through the board. In `copied` mode, each pair of hashes should match.
 4. Compare transfer lengths and payloads in direct and bridged USB captures. Include a report shorter than the endpoint maximum and, if supported by the mouse, an interrupt OUT operation. In `copied` mode, confirm that disconnecting the mouse stops forwarding until the next boot.
 
@@ -45,6 +51,7 @@ The subscriber receives `mouse <buttons> <dx> <dy> <wheel>`. The button mask use
 | Files in `src/` | Responsibility |
 |---|---|
 | `main.cpp` and `protocol.h` | Startup, physical events, subscriptions, and UDP commands |
+| `mouse_action.*` | Human-like action timing and trajectory |
 | `mouse_capture.*` | Mouse enumeration on J6 and descriptor capture |
 | `mouse_profile.*` and `mouse_layout.*` | Configuration validation and encoding for recognized movement formats |
 | `mouse_device.*` and `mouse_usb_profile.h` | PC-facing enumeration, the generic profile, and endpoint transfers |

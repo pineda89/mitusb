@@ -1,10 +1,12 @@
 // Text protocol spoken over UDP. Pure C++ so it can be unit-tested on the host.
 //
-//   hello              -> subscribe the sender to mouse events
+//   hello              -> subscribe the sender to button and wheel events
 //   profile            -> report whether USB descriptors were copied
 //   move <dx> <dy>     -> inject a relative move
 //   wheel <n>          -> inject wheel steps
 //   click left|right|middle
+//
+// A 17-byte binary datagram is a human-like action instead: see mouse_action.h.
 #pragma once
 #include <stdlib.h>
 #include <string.h>
