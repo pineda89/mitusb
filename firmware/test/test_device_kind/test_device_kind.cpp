@@ -140,9 +140,12 @@ void test_mouse_input_filter() {
   mouseFrozen = true;
   TEST_ASSERT_FALSE(mouseKind.input(packet, mouseLayout.bytes));
   mouseFrozen = false;
-  uint8_t shortPacket[] = {0x1f};  // not a report of this layout: forwarded untouched
+  hiddenMouseButtons = 0;
+  physicalMouse = {};
+  uint8_t shortPacket[] = {0x1f};  // too short to be a report of this layout: forwarded untouched
   TEST_ASSERT_TRUE(mouseKind.input(shortPacket, sizeof shortPacket));
   TEST_ASSERT_EQUAL_HEX8(0x1f, shortPacket[0]);
+  TEST_ASSERT_FALSE(physicalMouse.changed);
 }
 
 void test_only_one_interface_gets_the_mouse_filter() {
