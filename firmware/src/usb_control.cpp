@@ -23,8 +23,12 @@ uint8_t bootInterfaces[MaxUsbInterfaces], bootInterfaceCount;
 volatile State state;
 volatile uint32_t generation;  // counts SETUP packets, so a late answer is not sent to a newer request
 Setup pending;
-// Not DMAMEM: both controllers transfer straight into it and this memory is not cached.
+// Not DMAMEM: the controllers transfer straight into these and this memory is not cached.
+// `data` belongs to the host transfer in flight, which cannot be cancelled and may still
+// write into it after its request timed out. What the computer sends is therefore
+// received into `payload` and copied over only when the host side is free.
 uint8_t data[512] __attribute__((aligned(32)));
+uint8_t payload[512] __attribute__((aligned(32)));
 const uint32_t TimeoutMs = 500;
 
 void finish(uint32_t forGeneration, const Setup &setup, int result) {
@@ -55,7 +59,7 @@ extern "C" int usb_proxy_setup(uint64_t setupData, int unhandled) {
   pending = setup;
   if (!(setup.type & 0x80) && setup.length) {
     state = Receiving;
-    usb_proxy_receive(data, setup.length, 1);
+    usb_proxy_receive(payload, setup.length, 1);
   } else {
     state = Wanted;
   }
@@ -117,7 +121,9 @@ void taskUsbControl() {
 
   bool expired = millis() - since >= TimeoutMs;
   if (now == Wanted) {
-    if (hostControl(setup.both, data)) {
+    bool free = hostControlResult() != -2;
+    if (free && !(setup.type & 0x80)) memcpy(data, payload, setup.length);
+    if (free && hostControl(setup.both, data)) {
       noInterrupts();
       if (generation == forGeneration) state = Forwarding;
       interrupts();
