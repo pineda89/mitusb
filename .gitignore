@@ -8,3 +8,6 @@ _autosave-*
 
 # PlatformIO build output
 .pio/
+
+# Python bytecode
+__pycache__/
