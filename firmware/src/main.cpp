@@ -5,18 +5,16 @@
 
 #include "protocol.h"
 #include "mouse_action.h"
-#include "mouse_capture.h"
-#include "usb_device.h"
-#include "mouse_layout.h"
+#include "usb_capture.h"
 
 using namespace qindesign::network;
 
 static const uint16_t PORT = 4242;
 
 EthernetUDP udp;
-static MouseLayout layout;
 static UsbProfile profile;
-static uint8_t mouseEndpoint;
+static const DeviceKind *kinds[MaxUsbInterfaces];
+static uint8_t mouseEndpoint;  // carries the cloned mouse's reports, 0 if there is none
 static bool copiedProfile;
 static_assert(MousePacketSize <= 64, "report must fit endpoint buffers");
 
@@ -31,10 +29,10 @@ static MouseAction action;
 static bool sendReport(uint8_t buttons, int x, int y, int wheel, int pan) {
   buttons |= injected.buttons;
   if (copiedProfile) {
-    if (!layout.bytes) return false;
+    if (!mouseLayout.bytes) return false;
     uint8_t packet[MousePacketSize];
-    encodeMouse(layout, buttons, x, y, wheel, pan, packet);
-    return sendUsbPacket(mouseEndpoint, packet, layout.bytes, true);
+    encodeMouse(mouseLayout, buttons, x, y, wheel, pan, packet);
+    return sendUsbPacket(mouseEndpoint, packet, mouseLayout.bytes, true);
   }
   usb_mouse_buttons_state = buttons;
   return usb_mouse_move(x, y, wheel, pan) == 0;
@@ -68,27 +66,39 @@ static void toggleSideButtons() {
   delay(1000);
   noInterrupts();
   mouse.mouseDataClear();
+  physicalMouse = {};
   interrupts();
   mouseFrozen = false;
 }
 
 static void forwardPhysicalMouse() {
+  if (copiedProfile && !mouseLayout.bytes) return;  // the cloned device is not a mouse
+  int dx = 0, dy = 0, wheel = 0, hwheel = 0;
+  uint8_t buttons = 0;
   noInterrupts();
-  bool detached = copiedProfile ? !mouse.isCaptured() : !mouse.source;
-  if (detached || !mouse.available()) {
-    if (detached) mouse.mouseDataClear();
-    interrupts();
+  bool detached = copiedProfile ? !deviceAttached() : !mouse.source;
+  bool fresh = !detached && (copiedProfile ? physicalMouse.changed : mouse.available());
+  if (fresh && copiedProfile) {  // the mouse kind decoded these from the forwarded reports
+    buttons = physicalMouse.buttons;
+    wheel = physicalMouse.wheel;
+  } else if (fresh) {
+    dx = mouse.getMouseX();
+    dy = mouse.getMouseY();
+    wheel = mouse.getWheel();
+    hwheel = mouse.getWheelH();
+    buttons = mouse.getButtons();
+  }
+  physicalMouse.wheel = 0;
+  physicalMouse.changed = false;
+  if (!copiedProfile && (fresh || detached)) mouse.mouseDataClear();
+  interrupts();
+  if (!fresh) {
     if (detached && physicalButtons) {
       physicalButtons = 0;
       setButtons(physicalButtons);
     }
     return;
   }
-  int dx = mouse.getMouseX(), dy = mouse.getMouseY();
-  int wheel = mouse.getWheel(), hwheel = mouse.getWheelH();
-  uint8_t buttons = mouse.getButtons();
-  mouse.mouseDataClear();
-  interrupts();
 
   static bool modeButtonsHeld = false;
   bool held = buttons == ModeButtons;
@@ -166,7 +176,7 @@ static void handleCommand() {
   if (length <= 0) return;
   MouseActionCommand human;
   if (length == 17 && decodeMouseActionPacket((const int8_t*)udp.data(), human)) {
-    if (copiedProfile && !layout.bytes) return;  // no way to encode reports
+    if (copiedProfile && !mouseLayout.bytes) return;  // no way to encode reports
     if (!action.start(human, frameClock.update(USB1_FRINDEX >> 3))) return;
     const uint8_t ack = 121;
     udp.send(udp.remoteIP(), udp.remotePort(), &ack, 1);
@@ -194,8 +204,12 @@ static void handleCommand() {
 }
 
 void setup() {
-  beginMouseHost();
-  bool captured = probeMouse(profile, layout, mouseEndpoint);
+  beginUsbHost();
+  bool captured = probeDevice(profile, kinds);
+  for (unsigned i = 0; captured && i < profile.endpointCount; ++i) {
+    const UsbEndpoint &endpoint = profile.endpoints[i];
+    if (endpoint.in && kinds[endpoint.interface] == &mouseKind) mouseEndpoint = endpoint.number;
+  }
   copiedProfile = startUsbDevice(captured ? &profile : nullptr);
   Ethernet.setHostname("mitusb");
   Ethernet.begin();
@@ -204,7 +218,7 @@ void setup() {
 }
 
 void loop() {
-  taskMouseHost();
+  taskUsbHost();
   pollUsbDevice();
   forwardPhysicalMouse();
   handleCommand();
