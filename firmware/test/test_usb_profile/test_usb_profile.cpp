@@ -2,7 +2,7 @@
 #include <string.h>
 #include <vector>
 #include "usb_profile.h"
-#include "mouse_device.h"
+#include "usb_device.h"
 #include "../fixtures.h"
 
 void setUp() {}

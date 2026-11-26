@@ -1,7 +1,7 @@
 #pragma once
 
 #include <USBHost_t36.h>
-#include "mouse_device.h"
+#include "usb_device.h"
 #include "mouse_layout.h"
 
 class WiredMouse : public MouseController {
@@ -44,4 +44,5 @@ extern InjectedMouse injected;
 
 void beginMouseHost();
 void taskMouseHost();
-bool probeMouse(MouseProfile &profile, MouseLayout &layout, uint8_t &mouseInterface);
+// On success `mouseEndpoint` is the IN endpoint that carries the mouse's reports.
+bool probeMouse(UsbProfile &profile, MouseLayout &layout, uint8_t &mouseEndpoint);

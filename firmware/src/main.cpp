@@ -6,7 +6,7 @@
 #include "protocol.h"
 #include "mouse_action.h"
 #include "mouse_capture.h"
-#include "mouse_device.h"
+#include "usb_device.h"
 #include "mouse_layout.h"
 
 using namespace qindesign::network;
@@ -15,7 +15,8 @@ static const uint16_t PORT = 4242;
 
 EthernetUDP udp;
 static MouseLayout layout;
-static MouseProfile profile;
+static UsbProfile profile;
+static uint8_t mouseEndpoint;
 static bool copiedProfile;
 static_assert(MousePacketSize <= 64, "report must fit endpoint buffers");
 
@@ -33,7 +34,7 @@ static bool sendReport(uint8_t buttons, int x, int y, int wheel, int pan) {
     if (!layout.bytes) return false;
     uint8_t packet[MousePacketSize];
     encodeMouse(layout, buttons, x, y, wheel, pan, packet);
-    return sendMousePacket(packet, layout.bytes);
+    return sendUsbPacket(mouseEndpoint, packet, layout.bytes, true);
   }
   usb_mouse_buttons_state = buttons;
   return usb_mouse_move(x, y, wheel, pan) == 0;
@@ -194,9 +195,8 @@ static void handleCommand() {
 
 void setup() {
   beginMouseHost();
-  uint8_t mouseInterface;
-  bool captured = probeMouse(profile, layout, mouseInterface);
-  copiedProfile = startMouseDevice(captured ? &profile : nullptr, mouseInterface);
+  bool captured = probeMouse(profile, layout, mouseEndpoint);
+  copiedProfile = startUsbDevice(captured ? &profile : nullptr);
   Ethernet.setHostname("mitusb");
   Ethernet.begin();
   MDNS.begin("mitusb");  // reachable as mitusb.local, no IP lookup needed
@@ -205,7 +205,7 @@ void setup() {
 
 void loop() {
   taskMouseHost();
-  pollMouseDevice();
+  pollUsbDevice();
   forwardPhysicalMouse();
   handleCommand();
   advanceAction();

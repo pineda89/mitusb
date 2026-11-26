@@ -36,8 +36,18 @@ InjectedMouse injected;
 
 namespace {
 const MouseLayout *mouseLayout = nullptr;
+const UsbProfile *captured = nullptr;
+
+// The endpoint of an interface (by its number) in one direction, or 0.
+uint8_t endpointOf(uint8_t interfaceNumber, bool in) {
+  for (unsigned i = 0; captured && i < captured->endpointCount; ++i) {
+    const UsbEndpoint &e = captured->endpoints[i];
+    if (bool(e.in) == in && captured->interfaces[e.interface].number == interfaceNumber) return e.number;
+  }
+  return 0;
+}
 volatile bool controlComplete;
-DMAMEM uint8_t controlBuffer[MouseDescriptorCapacity] __attribute__((aligned(32)));
+DMAMEM uint8_t controlBuffer[UsbDescriptorCapacity] __attribute__((aligned(32)));
 
 void forwardInput(const Transfer_t *transfer) {
   auto *parser = static_cast<CapturingHIDParser *>(transfer->driver);
@@ -55,7 +65,7 @@ void forwardInput(const Transfer_t *transfer) {
                           visible, length, takenX, takenY);
       packet = visible;
     }
-    if (forwardHidInput(parser->interfaceNumber(), packet, length) && merged) {
+    if (sendUsbPacket(endpointOf(parser->interfaceNumber(), true), packet, length, false) && merged) {
       injected.x -= takenX;
       injected.y -= takenY;
       injected.sentButtons = injected.buttons;
@@ -98,16 +108,16 @@ bool readDescriptor(CapturingHIDParser *source, uint16_t value,
   return controlComplete;
 }
 
-bool captureString(CapturingHIDParser *source, MouseProfile &result,
+bool captureString(CapturingHIDParser *source, UsbProfile &result,
                    uint8_t index, uint16_t language) {
-  if (!readDescriptor(source, 0x0300 | index, language, MouseStringCapacity) ||
+  if (!readDescriptor(source, 0x0300 | index, language, UsbStringCapacity) ||
       controlBuffer[1] != 3) return false;
   uint8_t length = controlBuffer[0];
   if (length < 2 || (length & 1) || (index == 0 && length < 4) ||
-      result.stringCount >= MaxMouseStrings) {
+      result.stringCount >= MaxUsbStrings) {
     return false;
   }
-  MouseString &string = result.strings[result.stringCount++];
+  UsbString &string = result.strings[result.stringCount++];
   string.index = index;
   string.language = language;
   string.length = length;
@@ -115,8 +125,8 @@ bool captureString(CapturingHIDParser *source, MouseProfile &result,
   return true;
 }
 
-bool captureStrings(CapturingHIDParser *source, MouseProfile &result) {
-  uint8_t indices[4 + MaxMouseInterfaces];
+bool captureStrings(CapturingHIDParser *source, UsbProfile &result) {
+  uint8_t indices[4 + MaxUsbInterfaces];
   unsigned count = 0;
   indices[count++] = result.device[14];
   indices[count++] = result.device[15];
@@ -141,7 +151,7 @@ bool captureStrings(CapturingHIDParser *source, MouseProfile &result) {
   return true;
 }
 
-CapturingHIDParser *readyParser(const CapturingHIDParser &source, const MouseHidInterface &interface) {
+CapturingHIDParser *readyParser(const CapturingHIDParser &source, const UsbInterface &interface) {
   for (auto *parser : parsers) {
     if (parser->hasReportDescriptor() && parser->belongsTo(source) &&
         parser->interfaceNumber() == interface.number &&
@@ -152,8 +162,8 @@ CapturingHIDParser *readyParser(const CapturingHIDParser &source, const MouseHid
   return nullptr;
 }
 
-bool copyReports(const CapturingHIDParser &source, MouseProfile &result) {
-  CapturingHIDParser *interfaces[MaxMouseInterfaces];
+bool copyReports(const CapturingHIDParser &source, UsbProfile &result) {
+  CapturingHIDParser *interfaces[MaxUsbInterfaces];
   noInterrupts();
   for (unsigned i = 0; i < result.interfaceCount; ++i) {
     interfaces[i] = readyParser(source, result.interfaces[i]);
@@ -163,13 +173,22 @@ bool copyReports(const CapturingHIDParser &source, MouseProfile &result) {
     }
   }
   for (unsigned i = 0; i < result.interfaceCount; ++i) {
-    MouseHidInterface &interface = result.interfaces[i];
+    UsbInterface &interface = result.interfaces[i];
     memcpy(interface.report, interfaces[i]->getHIDReportDescriptor(), interface.reportLength);
     interfaces[i]->selected = true;
   }
   interrupts();
   return true;
 }
+}
+
+// This capture has one HID parser per interface and three of them.
+static bool allHid(const UsbProfile &profile) {
+  if (profile.interfaceCount > 3) return false;
+  for (unsigned i = 0; i < profile.interfaceCount; ++i) {
+    if (!profile.interfaces[i].hidOffset) return false;
+  }
+  return true;
 }
 
 bool WiredMouse::hid_process_in_data(const Transfer_t *transfer) {
@@ -192,10 +211,10 @@ void CapturingHIDParser::control(const Transfer_t *transfer) {
   USBHIDParser::control(transfer);
 }
 
-extern "C" void forwardHidOutput(uint8_t interfaceNumber, const uint8_t *packet, uint8_t length) {
+extern "C" void forwardUsbOutput(uint8_t endpoint, const uint8_t *packet, uint8_t length) {
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     for (auto *parser : parsers) {
-      if (parser->selected && parser->interfaceNumber() == interfaceNumber && length <= parser->outSize()) {
+      if (parser->selected && endpointOf(parser->interfaceNumber(), false) == endpoint && length <= parser->outSize()) {
         parser->sendPacket(packet, length);
         return;
       }
@@ -211,21 +230,21 @@ void taskMouseHost() {
   usbHost.Task();
 }
 
-bool probeMouse(MouseProfile &profile, MouseLayout &layout, uint8_t &mouseInterface) {
+bool probeMouse(UsbProfile &profile, MouseLayout &layout, uint8_t &mouseEndpoint) {
   layout = MouseLayout{};
-  mouseInterface = 0;
+  mouseEndpoint = 0;
   uint32_t start = millis();
   while (!mouse.source && millis() - start < 2500) usbHost.Task();
   auto *source = (CapturingHIDParser *)mouse.source;
   uint8_t device[18];
   if (!source || !readDescriptor(source, 0x0100, 0, sizeof device)) return false;
-  mouseInterface = source->interfaceNumber();
+  uint8_t mouseInterface = source->interfaceNumber();
   memcpy(device, controlBuffer, sizeof device);
   if (!readDescriptor(source, 0x0200, 0, 9)) return false;
   uint16_t total = controlBuffer[2] | uint16_t(controlBuffer[3]) << 8;
-  if (total < 9 || total > MouseConfigurationCapacity ||
+  if (total < 9 || total > UsbConfigurationCapacity ||
       !readDescriptor(source, 0x0200, 0, total) ||
-      !readMouseProfile(device, sizeof device, controlBuffer, total, profile) ||
+      !readUsbProfile(device, sizeof device, controlBuffer, total, profile) || !allHid(profile) ||
       !captureStrings(source, profile)) return false;
 
   start = millis();
@@ -233,8 +252,10 @@ bool probeMouse(MouseProfile &profile, MouseLayout &layout, uint8_t &mouseInterf
     if (mouse.source != source || millis() - start >= 500) return false;
     usbHost.Task();
   }
+  captured = &profile;
+  mouseEndpoint = endpointOf(mouseInterface, true);
   for (unsigned i = 0; i < profile.interfaceCount; ++i) {
-    const MouseHidInterface &interface = profile.interfaces[i];
+    const UsbInterface &interface = profile.interfaces[i];
     if (interface.number == mouseInterface) {
       if (readMouseLayout(interface.report, interface.reportLength, layout)) mouseLayout = &layout;
       break;
