@@ -2,12 +2,14 @@
 #include "usb_control.h"
 
 extern "C" volatile uint32_t usbhost_data_token;  // scripts/usbhost_control_length.py
+#include <avr/eeprom.h>
 #include <util/atomic.h>
 
 namespace {
-const uint32_t SkipCapture = 0x6d697455;
-// RAM2 is not initialised at startup, so this survives the restart that asks for it.
-DMAMEM uint32_t skipCaptureFlag;
+// One EEPROM byte carries "do not capture" across the restart that asks for it. It is
+// written only when a capture fails, so it does not wear.
+uint8_t *const SkipCaptureAddress = (uint8_t *)0;
+const uint8_t SkipCapture = 0xa5;
 
 // Not DMAMEM: the host controller transfers straight into these and this memory is not cached.
 uint8_t controlBuffer[UsbDescriptorCapacity] __attribute__((aligned(32)));
@@ -120,8 +122,18 @@ bool RawDevice::open(const UsbProfile &profile) {
     if (!claimed) break;
     endpointCount = 0;
     opened = true;
+    // Slowest first: USBHost_t36 links its periodic schedule into a loop, and hangs, when
+    // a pipe is added after one that is polled more often.
+    uint8_t order[MaxUsbEndpoints];
     for (unsigned i = 0; i < profile.endpointCount; ++i) {
-      const UsbEndpoint &source = profile.endpoints[i];
+      unsigned at = i;
+      for (; at && profile.endpoints[order[at - 1]].interval < profile.endpoints[i].interval; --at) {
+        order[at] = order[at - 1];
+      }
+      order[at] = i;
+    }
+    for (unsigned i = 0; i < profile.endpointCount; ++i) {
+      const UsbEndpoint &source = profile.endpoints[order[i]];
       Endpoint &endpoint = endpoints[endpointCount];
       endpoint.pipe = new_Pipe(device, 3, source.number, source.in, source.packetSize, source.interval);
       if (!endpoint.pipe) {
@@ -281,14 +293,17 @@ int hostControlResult() {
 }
 
 void beginUsbHost() {
-  if (skipCaptureFlag == SkipCapture) raw.enabled = false;
-  skipCaptureFlag = 0;
+  if (eeprom_read_byte(SkipCaptureAddress) == SkipCapture) {
+    raw.enabled = false;
+    eeprom_write_byte(SkipCaptureAddress, 0);
+  }
   usbHost.begin();
 }
 
 void taskUsbHost() {
   usbHost.Task();
 }
+
 
 bool deviceAttached() {
   return raw.forwarding;
@@ -303,8 +318,7 @@ bool probeDevice(UsbProfile &profile, const DeviceKind *kinds[MaxUsbInterfaces])
   if (!wasEnabled || !raw.claimed) return false;
   if (capture(profile, kinds)) return true;
   // The device is claimed and cannot be given back: start again without capturing.
-  skipCaptureFlag = SkipCapture;
-  arm_dcache_flush(&skipCaptureFlag, sizeof skipCaptureFlag);
+  eeprom_write_byte(SkipCaptureAddress, SkipCapture);
   SCB_AIRCR = 0x05FA0004;
   for (;;) {}
 }
