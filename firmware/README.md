@@ -11,7 +11,7 @@ Connect the device to J6 before powering up the Teensy 4.1. The micro-USB port c
 
 The firmware waits up to 2.5 seconds for a device. If none appears, or its configuration is outside the limits below, the board selects the generic profile. If the device is accepted but a later descriptor read fails, the board restarts once and comes up generic, because a device it has claimed cannot be handed to the generic mouse path.
 
-The copied profile supports one USB configuration with up to eight interfaces of any class and no alternate interface settings. Every endpoint must be an interrupt endpoint, numbered 1 through 7 and used once per direction, with packets of up to 64 bytes. An interface may have no endpoints. The configuration and each report descriptor can contain up to 512 bytes. The bridge serves strings in the first language the device advertises and asks the device for any other. Devices with isochronous or bulk endpoints, such as controllers with audio, do not fit.
+The copied profile supports one USB configuration with up to eight interfaces of any class and no alternate interface settings. Every endpoint must be an interrupt endpoint, numbered 1 through 7 and used once per direction, with packets of up to 64 bytes. An interface may have no endpoints. The configuration and each report descriptor can contain up to 512 bytes. The bridge serves strings in the first language the device advertises and asks the device for any other. Devices with isochronous or bulk endpoints or with alternate settings do not fit: an Xbox One or Xbox Series controller is rejected for all three, and the board comes up generic.
 
 USBHost_t36 enumerates peripherals on J6 before profile capture. The Teensy build patches three files in the build directory and stops if any of them no longer matches:
 
@@ -72,6 +72,18 @@ The subscriber receives `mouse <buttons> <wheel>` when the physical buttons chan
 5. Keyboard: type, check that the Caps Lock and Num Lock LEDs follow the computer, and use it in BIOS/UEFI and again after the operating system starts.
 6. Gamepad: check that the computer recognizes the same controller as when it is connected directly, then every stick, trigger and button, rumble, and the ring LED on an Xbox 360 controller.
 7. Control requests: run `python3 client/control_check.py <vid>:<pid>` (needs pyusb) with the device connected directly and again through the board. The two outputs should match. macOS keeps HID class requests to itself without root, so only the last three lines are meaningful there.
+
+Checked on the board on 2026-11-26:
+
+| Device | Result |
+|---|---|
+| Razer DeathAdder V3 Pro | `copied mouse`. Movement, buttons, wheel, side-button mode, `move` and `human` |
+| Wooting Two HE | `copied keyboard`. Typing and the Caps Lock LED |
+| 8BitDo Ultimate 2C on a cable | `copied gamepad`. Configuration identical to a direct read, every button, both triggers, full stick ranges, rumble. Like other Xbox 360 style controllers it sends nothing until the computer sets its player LED, which a driver does and macOS does not |
+| Xbox Series X\|S controller | Rejected as designed, `generic` |
+| A forced capture failure | One restart, then `generic`, no loop |
+
+Not checked: a wired Xbox 360 controller, the 8BitDo through its wireless receiver, a keyboard in BIOS/UEFI, and HID class requests from a computer that lets a program send them. Forwarded standard requests were checked from macOS: a stall is relayed in 1 to 2 ms and short replies keep their length.
 
 ## Source layout and test coverage
 

@@ -259,6 +259,13 @@ void test_rejects_what_the_bridge_cannot_carry() {
   TEST_ASSERT_FALSE(validUsbConfiguration(nullptr, 0));
 }
 
+void test_xbox_series_controller_is_rejected() {
+  UsbProfile profile;
+  TEST_ASSERT_FALSE(readUsbProfile(XboxSeriesDevice, sizeof XboxSeriesDevice,
+                                   XboxSeriesConfiguration, sizeof XboxSeriesConfiguration, profile));
+  TEST_ASSERT_FALSE(validUsbConfiguration(XboxSeriesConfiguration, sizeof XboxSeriesConfiguration));
+}
+
 void test_nine_interfaces_do_not_fit() {
   std::vector<uint8_t> config = {9, 2, 0, 0, 9, 1, 0, 0x80, 50};
   for (uint8_t i = 0; i < 9; ++i) config.insert(config.end(), {9, 4, i, 0, 0, 0xff, 0, 0, 0});
@@ -277,6 +284,7 @@ int main() {
   RUN_TEST(test_pad_profile);
   RUN_TEST(test_xbox360_profile);
   RUN_TEST(test_rejects_what_the_bridge_cannot_carry);
+  RUN_TEST(test_xbox_series_controller_is_rejected);
   RUN_TEST(test_nine_interfaces_do_not_fit);
   RUN_TEST(test_copies_device_and_configuration);
   RUN_TEST(test_keeps_supported_endpoint_number);
